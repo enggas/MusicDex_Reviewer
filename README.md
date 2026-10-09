@@ -1,4 +1,6 @@
-# React + Vite
+# MusicDex
+
+Buscador de canciones y álbumes sobre la API de MusicBrainz (React + Vite). Ejecuta `npm install` y `npm run dev`.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

@@ -1,121 +1,123 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import SearchForm, { EMPTY_FILTERS } from './components/SearchForm'
+import ResultCard from './components/ResultCard'
+import { PAGE_SIZE, search } from './lib/musicbrainz'
 import './App.css'
 
+const KINDS = [
+  { value: 'recording', label: 'Canciones' },
+  { value: 'release-group', label: 'Álbumes' },
+]
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [kind, setKind] = useState('release-group')
+  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [state, setState] = useState({ status: 'idle', items: [], count: 0, page: 0, error: '' })
+  const controller = useRef(null)
+
+  const run = useCallback(async (k, f, page) => {
+    controller.current?.abort()
+    const ctrl = new AbortController()
+    controller.current = ctrl
+    setState((s) => ({ ...s, status: 'loading', error: '', page }))
+    try {
+      const { items, count } = await search(k, f, { page, signal: ctrl.signal })
+      setState({ status: 'done', items, count, page, error: '' })
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setState((s) => ({ ...s, status: 'error', items: [], count: 0, error: err.message }))
+    }
+  }, [])
+
+  useEffect(() => () => controller.current?.abort(), [])
+
+  const changeKind = (next) => {
+    if (next === kind) return
+    controller.current?.abort()
+    setKind(next)
+    setState({ status: 'idle', items: [], count: 0, page: 0, error: '' })
+  }
+
+  const reset = () => {
+    controller.current?.abort()
+    setFilters(EMPTY_FILTERS)
+    setState({ status: 'idle', items: [], count: 0, page: 0, error: '' })
+  }
+
+  const totalPages = Math.ceil(state.count / PAGE_SIZE)
+  const goTo = (p) => {
+    run(kind, filters, p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="app">
+      <header>
+        <h1>MusicDex</h1>
+        <p className="subtitle">Busca canciones y álbumes en la base de datos de MusicBrainz</p>
+      </header>
+
+      <div className="tabs" role="tablist">
+        {KINDS.map((k) => (
+          <button
+            key={k.value}
+            role="tab"
+            aria-selected={kind === k.value}
+            className={kind === k.value ? 'tab active' : 'tab'}
+            onClick={() => changeKind(k.value)}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+
+      <SearchForm
+        kind={kind}
+        filters={filters}
+        onChange={setFilters}
+        onSubmit={() => run(kind, filters, 0)}
+        onReset={reset}
+        loading={state.status === 'loading'}
+      />
+
+      <section aria-live="polite" className="results">
+        {state.status === 'error' && <p className="notice error">{state.error}</p>}
+        {state.status === 'loading' && <p className="notice">Consultando MusicBrainz…</p>}
+        {state.status === 'done' && state.items.length === 0 && (
+          <p className="notice">No se encontraron resultados. Prueba con menos filtros.</p>
+        )}
+        {state.status === 'done' && state.items.length > 0 && (
+          <>
+            <p className="count">
+              {state.count.toLocaleString('es')} resultados · página {state.page + 1} de{' '}
+              {Math.max(totalPages, 1).toLocaleString('es')}
+            </p>
+            <ul className="list">
+              {state.items.map((item) => (
+                <ResultCard key={item.id} item={item} />
+              ))}
+            </ul>
+            <nav className="pager">
+              <button className="ghost" disabled={state.page === 0} onClick={() => goTo(state.page - 1)}>
+                ← Anterior
+              </button>
+              <button
+                className="ghost"
+                disabled={state.page + 1 >= totalPages}
+                onClick={() => goTo(state.page + 1)}
+              >
+                Siguiente →
+              </button>
+            </nav>
+          </>
+        )}
       </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <footer>
+        Datos de <a href="https://musicbrainz.org" target="_blank" rel="noreferrer">MusicBrainz</a> · portadas de{' '}
+        <a href="https://coverartarchive.org" target="_blank" rel="noreferrer">Cover Art Archive</a>
+      </footer>
+    </main>
   )
 }
 
